@@ -118,4 +118,4 @@ if prompt := st.chat_input("Ask your question..."):
                 # Display assistant's response
                 st.write(response["output_text"])
                 # Add assistant's response to chat history
-                st.session_state.messages.append({"role": "assistant", "content": response["output_text"]}
+                st.session_state.messages.append({"role": "assistant", "content": response["output_text"]})
