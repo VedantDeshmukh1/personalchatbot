@@ -51,7 +51,8 @@ def load_vector_store():
 
 async def get_conversational_chain():
     prompt_template = """
-    Answer the question as detailed as possible from the provided context. 
+    Answer the question as detailed as possible from the provided context.
+    If the user says 'Hi' or something like "Who are you?" respond with "I am Vedant's personal chatbot to help you on his behalf."
     If the answer is not in the context, say "I am afraid I can't answer this question, Happy to check and verify that later!! ". 
     Do not provide incorrect answers.
 
@@ -69,7 +70,7 @@ async def get_conversational_chain():
     return chain
 
 # --- Streamlit UI ---
-st.set_page_config(page_title="Course Chatbot", page_icon="📃💬")
+st.set_page_config(page_title="Vedant's Assistant", page_icon="📃")
 st.title("💬 Chat with Vedant ")
 
 # --- Session State Initialization ---
