@@ -52,7 +52,7 @@ def load_vector_store():
 async def get_conversational_chain():
     prompt_template = """
     Answer the question as detailed as possible from the provided context. 
-    If the answer is not in the context, say "I Can't answer this question, Happy to Discuss with Build Fast With AI Course Chatbot". 
+    If the answer is not in the context, say "I am afraid I can't answer this question, Happy to check and verify that later!! ". 
     Do not provide incorrect answers.
 
     Context:
@@ -78,7 +78,7 @@ if 'buffer_memory' not in st.session_state:
 
 if "messages" not in st.session_state.keys():
     st.session_state.messages = [
-        {"role": "assistant", "content": "Ask me anything about the Course! 😊"}
+        {"role": "assistant", "content": "Hi im Vedant's bot ask me anything about him hopefully i'll be able to guide you on his behalf! 😊"}
     ]
 
 # --- PDF Processing & Vector Store ---
