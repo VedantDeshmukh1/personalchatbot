@@ -70,7 +70,7 @@ async def get_conversational_chain():
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="Course Chatbot", page_icon="📃💬")
-st.title("💬 Chat with Build Fast With AI ")
+st.title("💬 Chat with Vedant ")
 
 # --- Session State Initialization ---
 if 'buffer_memory' not in st.session_state:
