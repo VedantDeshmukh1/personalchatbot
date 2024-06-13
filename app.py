@@ -116,7 +116,7 @@ if prompt := st.chat_input("Ask your question..."):
     # Process user input
     if st.session_state.messages[-1]["role"] != "assistant":
         with st.chat_message("assistant"):
-                docs = vector_store.similarity_search(prompt)
+                docs = vector_store.similarity_search(prompt, k =8)
                 chain = asyncio.run(get_conversational_chain())
                 response = chain({"input_documents": docs, "question": prompt}, return_only_outputs=True)
                 # Display assistant's response
