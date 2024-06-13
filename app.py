@@ -62,7 +62,7 @@ async def get_conversational_chain():
     Information:
     {context}
 
-    Question:
+    Question:(if the question is just a word find the related information present in the file provided and answer accordingly)
     {question}
 
     Answer:
