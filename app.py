@@ -51,12 +51,15 @@ def load_vector_store():
 
 async def get_conversational_chain():
     prompt_template = """
-    Answer the question as detailed as possible from the provided context.
+    Answer the question as detailed as possible from the provided information.
+    Use the information provided in file as the ground truth anything present in that understand it and make your own answers based on the information
+    present in the file.
+    
     If the user says 'Hi' or something like "Who are you?" respond with "I am Vedant's personal chatbot to help you on his behalf."
-    If the answer is not in the context, say "I am afraid I can't answer this question, Happy to check and verify that later!! ". 
+    If the answer is not at all present in the context only then, say "I am afraid I can't answer this question, Happy to check and verify that later!! ". 
     Do not provide incorrect answers.
 
-    Context:
+    Information:
     {context}
 
     Question:
