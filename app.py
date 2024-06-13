@@ -65,6 +65,7 @@ async def get_conversational_chain():
     Question:(if the question is just a word find the related information present in the file provided and answer accordingly)
     {question}
 
+    Use your own words to make the answer and then give it in a structurally correct manner.
     Answer:
     """
     model = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.3)
