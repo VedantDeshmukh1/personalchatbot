@@ -36,7 +36,7 @@ def get_pdf_text(pdf_path):
     return text
 
 def get_text_chunks(text):
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=100)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=2000)
     chunks = text_splitter.split_text(text)
     return chunks
 
@@ -116,7 +116,7 @@ if prompt := st.chat_input("Ask your question..."):
     # Process user input
     if st.session_state.messages[-1]["role"] != "assistant":
         with st.chat_message("assistant"):
-                docs = vector_store.similarity_search(prompt, k =8)
+                docs = vector_store.similarity_search(prompt)
                 chain = asyncio.run(get_conversational_chain())
                 response = chain({"input_documents": docs, "question": prompt}, return_only_outputs=True)
                 # Display assistant's response
