@@ -2,6 +2,8 @@ import streamlit as st
 import os
 import asyncio
 from dotenv import load_dotenv
+import hashlib
+from pathlib import Path
 
 # PDF and Text Processing
 from PyPDF2 import PdfReader
@@ -22,7 +24,8 @@ load_dotenv()
 
 # Configuration Constants
 DEFAULT_PDF_PATH = "data/about.pdf"
-VECTOR_STORE_FILENAME = "faiss_index"
+VECTOR_STORE_DIR = "vector_store"
+PDF_HASH_FILE = os.path.join(VECTOR_STORE_DIR, "pdf_hash.txt")
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 LLM_MODEL = "llama-3.1-8b-instant"
 
@@ -37,6 +40,9 @@ class PDFChatbot:
 
         # Initialize vector store
         self.vector_store = None
+
+        # Create vector store directory if it doesn't exist
+        os.makedirs(VECTOR_STORE_DIR, exist_ok=True)
 
     def get_pdf_text(self, pdf_path):
         """Extract text from PDF file"""
@@ -62,11 +68,38 @@ class PDFChatbot:
         )
         return text_splitter.split_text(text)
 
+    def get_pdf_hash(self, pdf_path):
+        """Calculate MD5 hash of PDF file"""
+        try:
+            with open(pdf_path, 'rb') as file:
+                return hashlib.md5(file.read()).hexdigest()
+        except Exception as e:
+            st.error(f"Error calculating PDF hash: {e}")
+            return None
+
+    def save_pdf_hash(self, pdf_hash):
+        """Save PDF hash to file"""
+        try:
+            with open(PDF_HASH_FILE, 'w') as file:
+                file.write(pdf_hash)
+        except Exception as e:
+            st.error(f"Error saving PDF hash: {e}")
+
+    def get_saved_pdf_hash(self):
+        """Get saved PDF hash"""
+        try:
+            if os.path.exists(PDF_HASH_FILE):
+                with open(PDF_HASH_FILE, 'r') as file:
+                    return file.read().strip()
+        except Exception as e:
+            st.error(f"Error reading PDF hash: {e}")
+        return None
+
     def create_vector_store(self, text_chunks):
         """Create and save vector store"""
         try:
             self.vector_store = FAISS.from_texts(text_chunks, embedding=self.embeddings)
-            self.vector_store.save_local(VECTOR_STORE_FILENAME)
+            self.vector_store.save_local(VECTOR_STORE_DIR)
             st.success("Vector store created successfully!")
         except Exception as e:
             st.error(f"Failed to create vector store: {e}")
@@ -74,12 +107,14 @@ class PDFChatbot:
     def load_vector_store(self):
         """Load existing vector store"""
         try:
-            self.vector_store = FAISS.load_local(
-                VECTOR_STORE_FILENAME, 
-                self.embeddings, 
-                allow_dangerous_deserialization=True
-            )
-            return True
+            if os.path.exists(os.path.join(VECTOR_STORE_DIR, "index.faiss")):
+                self.vector_store = FAISS.load_local(
+                    VECTOR_STORE_DIR, 
+                    self.embeddings,
+                    allow_dangerous_deserialization=True
+                )
+                return True
+            return False
         except Exception as e:
             st.error(f"Failed to load vector store: {e}")
             return False
@@ -155,16 +190,31 @@ def main():
     # Initialize chatbot
     chatbot = PDFChatbot()
 
-    # Prepare vector store
-    if not os.path.exists(VECTOR_STORE_FILENAME):
+    # Check if PDF exists
+    if not os.path.exists(DEFAULT_PDF_PATH):
+        st.error(f"PDF file not found at {DEFAULT_PDF_PATH}")
+        return
+
+    # Get current PDF hash
+    current_pdf_hash = chatbot.get_pdf_hash(DEFAULT_PDF_PATH)
+    saved_pdf_hash = chatbot.get_saved_pdf_hash()
+
+    # Check if vector store needs to be created or updated
+    vector_store_exists = os.path.exists(os.path.join(VECTOR_STORE_DIR, "index.faiss"))
+    
+    if not vector_store_exists or current_pdf_hash != saved_pdf_hash:
         with st.spinner("Processing PDF and creating vector store..."):
             raw_text = chatbot.get_pdf_text(DEFAULT_PDF_PATH)
             if raw_text:
                 text_chunks = chatbot.get_text_chunks(raw_text)
                 chatbot.create_vector_store(text_chunks)
+                chatbot.save_pdf_hash(current_pdf_hash)
+                st.success("Vector store updated successfully!")
     else:
-        with st.spinner("Loading vector store..."):
-            chatbot.load_vector_store()
+        with st.spinner("Loading existing vector store..."):
+            if not chatbot.load_vector_store():
+                st.error("Failed to load vector store. Please refresh the page.")
+                return
 
     # Initialize session state for messages
     if "messages" not in st.session_state:
