@@ -1,126 +1,199 @@
 import streamlit as st
-from streamlit_chat import message
-from PyPDF2 import PdfReader
-import asyncio
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 import os
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-import google.generativeai as genai
-from langchain_community.vectorstores import FAISS
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains.question_answering import load_qa_chain
-from langchain.prompts import PromptTemplate
-from langchain.chains import ConversationChain
-from langchain.chains.conversation.memory import ConversationBufferWindowMemory
+import asyncio
 from dotenv import load_dotenv
 
+# PDF and Text Processing
+from PyPDF2 import PdfReader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+# Embeddings and Vector Store
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+
+# LLM and Chains
+from langchain_groq import ChatGroq
+from langchain.chains.question_answering import load_qa_chain
+from langchain.prompts import PromptTemplate
+from langchain.memory import ConversationBufferWindowMemory
+
+# Load environment variables
 load_dotenv()
-os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-# --- Constants ---
-DEFAULT_PDF_PATH = "data/about.pdf"  # Update with your PDF path
+# Configuration Constants
+DEFAULT_PDF_PATH = "data/about.pdf"
 VECTOR_STORE_FILENAME = "faiss_index"
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+LLM_MODEL = "llama-3.1-8b-instant"
 
-# --- Initialize Vector Store ---
-embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-vector_store = None
+class PDFChatbot:
+    def __init__(self):
+        # Initialize embeddings
+        try:
+            self.embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+        except Exception as e:
+            st.error(f"Failed to load embeddings: {e}")
+            raise
 
-# --- Functions ---
-def get_pdf_text(pdf_path):
-    text = ""
-    with open(pdf_path, 'rb') as pdf_file:
-        pdf_reader = PdfReader(pdf_file)
-        for page in pdf_reader.pages:
-            text += page.extract_text()
-    return text
+        # Initialize vector store
+        self.vector_store = None
 
-def get_text_chunks(text):
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=2000)
-    chunks = text_splitter.split_text(text)
-    return chunks
+    def get_pdf_text(self, pdf_path):
+        """Extract text from PDF file"""
+        try:
+            text = ""
+            with open(pdf_path, 'rb') as pdf_file:
+                pdf_reader = PdfReader(pdf_file)
+                for page in pdf_reader.pages:
+                    text += page.extract_text() or ""
+            return text
+        except FileNotFoundError:
+            st.error(f"PDF file not found at {pdf_path}")
+            return ""
+        except Exception as e:
+            st.error(f"Error reading PDF: {e}")
+            return ""
 
-def create_and_save_vector_store(text_chunks):
-    global vector_store
-    vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
-    vector_store.save_local(VECTOR_STORE_FILENAME)
+    def get_text_chunks(self, text, chunk_size=10000, chunk_overlap=2000):
+        """Split text into manageable chunks"""
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size, 
+            chunk_overlap=chunk_overlap
+        )
+        return text_splitter.split_text(text)
 
-def load_vector_store():
-    global vector_store
-    vector_store = FAISS.load_local(VECTOR_STORE_FILENAME, embeddings, allow_dangerous_deserialization=True)
+    def create_vector_store(self, text_chunks):
+        """Create and save vector store"""
+        try:
+            self.vector_store = FAISS.from_texts(text_chunks, embedding=self.embeddings)
+            self.vector_store.save_local(VECTOR_STORE_FILENAME)
+            st.success("Vector store created successfully!")
+        except Exception as e:
+            st.error(f"Failed to create vector store: {e}")
 
-async def get_conversational_chain():
-    prompt_template = """
-    Answer the question as detailed as possible from the provided information.
-    Use the information provided in file as the ground truth anything present in that understand it and make your own answers based on the information
-    present in the file.
-    
-    If the user says 'Hi' or something like "Who are you?" respond with "I am Vedant's personal chatbot to help you on his behalf."
-    If the answer is not at all present in the context only then, say "I am afraid I can't answer this question, Happy to check and verify that later!! ". 
-    Do not provide incorrect answers.
+    def load_vector_store(self):
+        """Load existing vector store"""
+        try:
+            self.vector_store = FAISS.load_local(
+                VECTOR_STORE_FILENAME, 
+                self.embeddings, 
+                allow_dangerous_deserialization=True
+            )
+            return True
+        except Exception as e:
+            st.error(f"Failed to load vector store: {e}")
+            return False
 
-    Information:
-    {context}
+    def get_conversational_chain(self):
+        """Create conversational QA chain"""
+        prompt_template = """
+        Context: {context}
+        
+        Question: {question}
+        
+        Instructions:
+        - Answer based strictly on the provided context
+        - If the answer isn't in the context, respond with: "I don't have this information in my knowledge base, but I'll be happy to check with Vedant and get back to you on this!"
+        - Provide a clear, concise, and structured response
+        - If asked "Who are you?", respond "I am Vedant's personal assistant chatbot"
+        - Maintain a friendly and helpful tone
+        
+        Answer:
+        """
+        
+        try:
+            model = ChatGroq(
+                temperature=0.3, 
+                model_name=LLM_MODEL,
+                groq_api_key=os.getenv("GROQ_API_KEY")
+            )
+            
+            prompt = PromptTemplate(
+                template=prompt_template, 
+                input_variables=["context", "question"]
+            )
+            
+            chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
+            return chain
+        except Exception as e:
+            st.error(f"Failed to create conversational chain: {e}")
+            return None
 
-    Question:(if the question is just a word find the related information present in the file provided and answer accordingly)
-    {question}
+    def process_query(self, query):
+        """Process user query and retrieve response"""
+        if not self.vector_store:
+            st.warning("Vector store not loaded. Please process PDF first.")
+            return "I'm unable to process your query at the moment."
+        
+        try:
+            # Perform similarity search
+            docs = self.vector_store.similarity_search(query, k=3)
+            
+            # Get conversational chain
+            chain = self.get_conversational_chain()
+            
+            if not chain:
+                return "Sorry, I'm experiencing technical difficulties."
+            
+            # Get response
+            response = chain(
+                {"input_documents": docs, "question": query}, 
+                return_only_outputs=True
+            )
+            
+            return response.get("output_text", "I couldn't generate a response.")
+        
+        except Exception as e:
+            st.error(f"Query processing error: {e}")
+            return "I encountered an error processing your query."
 
-    Use your own words to make the answer and then give it in a structurally correct manner.
-    Answer:
-    """
-    model = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.3)
-    prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-    chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
-    return chain
+def main():
+    # Streamlit UI Configuration
+    st.set_page_config(page_title="Vedant's Assistant", page_icon="🤖")
+    st.title("💬 Chat with Vedant's AI Assistant")
 
-# --- Streamlit UI ---
-st.set_page_config(page_title="Vedant's Assistant", page_icon="🤖")
-st.title("💬🤖 Chat with Vedant ")
+    # Initialize chatbot
+    chatbot = PDFChatbot()
 
-# --- Session State Initialization ---
-if 'buffer_memory' not in st.session_state:
-    st.session_state.buffer_memory = ConversationBufferWindowMemory(k=3, return_messages=True)
+    # Prepare vector store
+    if not os.path.exists(VECTOR_STORE_FILENAME):
+        with st.spinner("Processing PDF and creating vector store..."):
+            raw_text = chatbot.get_pdf_text(DEFAULT_PDF_PATH)
+            if raw_text:
+                text_chunks = chatbot.get_text_chunks(raw_text)
+                chatbot.create_vector_store(text_chunks)
+    else:
+        with st.spinner("Loading vector store..."):
+            chatbot.load_vector_store()
 
-if "messages" not in st.session_state.keys():
-    st.session_state.messages = [
-        {"role": "assistant", "content": "Hi im Vedant's bot ask me anything about him hopefully i'll be able to guide you on his behalf! 😊"}
-    ]
+    # Initialize session state for messages
+    if "messages" not in st.session_state:
+        st.session_state.messages = [
+            {"role": "assistant", "content": "Hi! I'm Vedant's AI assistant. Ask me anything about him!"}
+        ]
 
-# --- PDF Processing & Vector Store ---
-if not os.path.exists(VECTOR_STORE_FILENAME):
-    with st.spinner("Processing PDF..."):
-        raw_text = get_pdf_text(DEFAULT_PDF_PATH)
-        text_chunks = get_text_chunks(raw_text)
-        create_and_save_vector_store(text_chunks)
-        st.success("PDF processed and vector store created!")
+    # Display chat history
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.write(msg["content"])
 
-if os.path.exists(VECTOR_STORE_FILENAME) and vector_store is None:
-    with st.spinner("Loading vector store..."):
-        load_vector_store()
-        # st.success("Vector store loaded!")
-
-# --- Chat Interaction ---
-# Display previous messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.write(message["content"])
-
-# User input area
-if prompt := st.chat_input("Ask your question..."):
-    # Add user message to chat history
-    st.session_state.messages.append({"role": "user", "content": prompt})
-
-    # Display user message first
-    with st.chat_message("user"):
-        st.write(prompt)
-
-    # Process user input
-    if st.session_state.messages[-1]["role"] != "assistant":
+    # User input
+    if prompt := st.chat_input("Ask a question about Vedant"):
+        # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        # Display user message
+        with st.chat_message("user"):
+            st.write(prompt)
+        
+        # Generate response
         with st.chat_message("assistant"):
-                docs = vector_store.similarity_search(prompt)
-                chain = asyncio.run(get_conversational_chain())
-                response = chain({"input_documents": docs, "question": prompt}, return_only_outputs=True)
-                # Display assistant's response
-                st.write(response["output_text"])
-                # Add assistant's response to chat history
-                st.session_state.messages.append({"role": "assistant", "content": response["output_text"]})
+            with st.spinner("Generating response..."):
+                response = chatbot.process_query(prompt)
+                st.write(response)
+        
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": response})
+
+if __name__ == "__main__":
+    main()

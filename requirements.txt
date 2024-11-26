@@ -10,3 +10,5 @@ python-dotenv
 nemoguardrails
 nest-asyncio
 openai
+sentence-transformers
+langchain-groq
