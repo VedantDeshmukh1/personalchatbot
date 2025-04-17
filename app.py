@@ -60,7 +60,7 @@ class PDFChatbot:
             st.error(f"Error reading PDF: {e}")
             return ""
 
-    def get_text_chunks(self, text, chunk_size=10000, chunk_overlap=2000):
+    def get_text_chunks(self, text, chunk_size=2000, chunk_overlap=500):
         """Split text into manageable chunks"""
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size, 
